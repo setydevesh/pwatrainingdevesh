@@ -17,7 +17,9 @@ import {
     Text,
     Stack,
     useMultiStyleConfig,
-    IconButton
+    IconButton,
+    useDisclosure,
+    Button
 } from '@chakra-ui/react'
 import DynamicImage from '../dynamic-image'
 
@@ -29,7 +31,8 @@ import {productUrlBuilder} from '../../utils/url'
 import Link from '../link'
 import withRegistration from '../../hoc/with-registration'
 import {useCurrency} from '../../hooks'
-
+import ProductViewModal from '../../components/product-view-modal'
+import {useCommerceAPI} from '../../commerce-api/contexts'
 const IconButtonWithRegistration = withRegistration(IconButton)
 
 // Component Skeleton
@@ -65,7 +68,7 @@ const ProductTile = (props) => {
         dynamicImageProps,
         ...rest
     } = props
-
+    const {isOpen, onOpen, onClose} = useDisclosure()
     const {currency, image, price, productId, hitType} = product
 
     // ProductTile is used by two components, RecommendedProducts and ProductList.
@@ -76,72 +79,95 @@ const ProductTile = (props) => {
 
     const {currency: activeCurrency} = useCurrency()
     const [isFavouriteLoading, setFavouriteLoading] = useState(false)
+    const [fullProduct, setFullProduct] = useState(product)
     const styles = useMultiStyleConfig('ProductTile')
-
+    const api = useCommerceAPI()
+    const openQuickView = async () => {
+        setFullProduct(
+            await api.shopperProducts.getProduct({
+                parameters: {
+                    id: product.productId
+                }
+            })
+        )
+        onOpen()
+    }
     return (
-        <Link
-            data-testid="product-tile"
-            {...styles.container}
-            to={productUrlBuilder({id: productId}, intl.local)}
-            {...rest}
-        >
-            <Box {...styles.imageWrapper}>
-                {image && (
-                    <AspectRatio {...styles.image}>
-                        <DynamicImage
-                            src={`${image.disBaseLink || image.link}[?sw={width}&q=60]`}
-                            widths={dynamicImageProps?.widths}
-                            imageProps={{
-                                alt: image.alt,
-                                ...dynamicImageProps?.imageProps
+        <div>
+            <Link
+                data-testid="product-tile"
+                {...styles.container}
+                to={productUrlBuilder({id: productId}, intl.locale)}
+                {...rest}
+            >
+                <Box {...styles.imageWrapper}>
+                    {image && (
+                        <AspectRatio {...styles.image}>
+                            <DynamicImage
+                                src={`${image.disBaseLink || image.link}[?sw={width}&q=60]`}
+                                widths={dynamicImageProps?.widths}
+                                imageProps={{
+                                    alt: image.alt,
+                                    ...dynamicImageProps?.imageProps
+                                }}
+                            />
+                        </AspectRatio>
+                    )}
+
+                    {enableFavourite && (
+                        <Box
+                            onClick={(e) => {
+                                // stop click event from bubbling
+                                // to avoid user from clicking the underlying
+                                // product while the favourite icon is disabled
+                                e.preventDefault()
                             }}
+                        >
+                            <IconButtonWithRegistration
+                                aria-label={intl.formatMessage({
+                                    id: 'product_tile.assistive_msg.wishlist',
+                                    defaultMessage: 'Wishlist'
+                                })}
+                                icon={isFavourite ? <HeartSolidIcon /> : <HeartIcon />}
+                                {...styles.favIcon}
+                                disabled={isFavouriteLoading}
+                                onClick={async () => {
+                                    setFavouriteLoading(true)
+                                    await onFavouriteToggle(!isFavourite)
+                                    setFavouriteLoading(false)
+                                }}
+                            />
+                        </Box>
+                    )}
+                </Box>
+                <Box>
+                    {isOpen && (
+                        <ProductViewModal
+                            isOpen={isOpen}
+                            onOpen={onOpen}
+                            onClose={onClose}
+                            product={fullProduct}
                         />
-                    </AspectRatio>
-                )}
+                    )}
+                </Box>
+                {/* Title */}
+                <Text {...styles.title}>{localizedProductName}</Text>
 
-                {enableFavourite && (
-                    <Box
-                        onClick={(e) => {
-                            // stop click event from bubbling
-                            // to avoid user from clicking the underlying
-                            // product while the favourite icon is disabled
-                            e.preventDefault()
-                        }}
-                    >
-                        <IconButtonWithRegistration
-                            aria-label={intl.formatMessage({
-                                id: 'product_tile.assistive_msg.wishlist',
-                                defaultMessage: 'Wishlist'
-                            })}
-                            icon={isFavourite ? <HeartSolidIcon /> : <HeartIcon />}
-                            {...styles.favIcon}
-                            disabled={isFavouriteLoading}
-                            onClick={async () => {
-                                setFavouriteLoading(true)
-                                await onFavouriteToggle(!isFavourite)
-                                setFavouriteLoading(false)
-                            }}
-                        />
-                    </Box>
-                )}
-            </Box>
-
-            {/* Title */}
-            <Text {...styles.title}>{localizedProductName}</Text>
-
-            {/* Price */}
-            <Text {...styles.price} data-testid="product-tile-price">
-                {hitType === 'set' &&
-                    intl.formatMessage({
-                        id: 'product_tile.label.starting_at_price',
-                        defaultMessage: 'Starting at'
-                    })}{' '}
-                {intl.formatNumber(price, {
-                    style: 'currency',
-                    currency: currency || activeCurrency
-                })}
-            </Text>
-        </Link>
+                {/* Price */}
+                <Text {...styles.price} data-testid="product-tile-price">
+                    {hitType === 'set' &&
+                        intl.formatMessage({
+                            id: 'product_tile.label.starting_at_price',
+                            defaultMessage: 'Starting at'
+                        })}{' '}
+                    {intl.formatNumber(price, {
+                        style: 'currency',
+                        currency: currency || activeCurrency
+                    })}
+                </Text>
+            </Link>
+            <Button onClick={openQuickView}>Quick View</Button>
+        </div>
     )
 }
 
