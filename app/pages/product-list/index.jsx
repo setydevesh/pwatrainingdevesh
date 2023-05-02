@@ -71,11 +71,10 @@ import {
 } from '../../constants'
 import useNavigation from '../../hooks/use-navigation'
 import LoadingSpinner from '../../components/loading-spinner'
-
+import {useCommerceAPI} from '../../commerce-api/contexts'
 // NOTE: You can ignore certain refinements on a template level by updating the below
 // list of ignored refinements.
 const REFINEMENT_DISALLOW_LIST = ['c_isNew']
-
 /*
  * This is a simple product listing page. It displays a paginated list
  * of product hit objects. Allowing for sorting and filtering based on the
@@ -101,6 +100,8 @@ const ProductList = (props) => {
     const params = useParams()
     const toast = useToast()
     const einstein = useEinstein()
+    const [newOffset, setNewOffset] = useState(0)
+    const [searchResult, setSearchResult] = useState(productSearchResult ? productSearchResult : '')
 
     const basePath = `${location.pathname}${location.search}`
     // Reset scroll position when `isLoaded` becomes `true`.
@@ -232,7 +233,26 @@ const ProductList = (props) => {
     const resetFilters = () => {
         navigate(window.location.pathname)
     }
+    const api = useCommerceAPI()
+    useEffect(() => {
+        if (productSearchResult) {
+            productSearchResult.hits = [...productSearchResult.hits, ...searchResult.hits]
+        }
+    }, [searchResult])
 
+
+    const loadMore = async () => {
+        setNewOffset(newOffset + 9)
+        const newParam = {
+            limit: 9,
+            offset: newOffset + 9
+        }
+        newParam.refine = `cgid=${category.id}`
+        let result = await api.shopperSearch.productSearch({
+            parameters: newParam
+        })
+        setSearchResult(result)
+    }
     let selectedSortingOptionLabel = productSearchResult?.sortingOptions?.find(
         (option) => option.id === productSearchResult?.selectedSortingOption
     )
@@ -431,8 +451,22 @@ const ProductList = (props) => {
                                 justifyContent={['center', 'center', 'flex-start']}
                                 paddingTop={8}
                             >
-                                <Pagination currentURL={basePath} urls={pageUrls} />
-
+                                {total > 9 + newOffset ? (
+                                    <Button
+                                        fontSize="sm"
+                                        colorScheme="blue"
+                                        variant="solid"
+                                        width="100%"
+                                        maxWidth="300px"
+                                        mx="auto"
+                                        onClick={loadMore}
+                                        my={8}
+                                    >
+                                        LOAD MORE
+                                    </Button>
+                                ) : (
+                                    <></>
+                                )}
                                 {/*
                             Our design doesn't call for a page size select. Show this element if you want
                             to add one to your design.
@@ -590,12 +624,12 @@ ProductList.getProps = async ({res, params, location, api}) => {
     if (!searchParams.refine.includes(`cgid=${categoryId}`) && categoryId) {
         searchParams.refine.push(`cgid=${categoryId}`)
     }
-
     // Set the `cache-control` header values to align with the Commerce API settings.
     if (res) {
         res.set('Cache-Control', `max-age=${MAX_CACHE_AGE}`)
     }
-
+    searchParams.limit = 9
+    searchParams.offset = params.offset || 0
     const [category, productSearchResult] = await Promise.all([
         isSearch
             ? Promise.resolve()
