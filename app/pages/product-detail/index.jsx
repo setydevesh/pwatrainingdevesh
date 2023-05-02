@@ -33,7 +33,8 @@ import {
     API_ERROR_MESSAGE,
     MAX_CACHE_AGE,
     TOAST_ACTION_VIEW_WISHLIST,
-    TOAST_MESSAGE_ADDED_TO_WISHLIST
+    TOAST_MESSAGE_ADDED_TO_WISHLIST,
+    TOAST_MESSAGE_REMOVED_FROM_WISHLIST
 } from '../../constants'
 import {rebuildPathWithParams} from '../../utils/url'
 import {useHistory} from 'react-router-dom'
@@ -50,6 +51,7 @@ const ProductDetail = ({category, product, isLoading}) => {
     const [primaryCategory, setPrimaryCategory] = useState(category)
     const [productSetSelection, setProductSetSelection] = useState({})
     const childProductRefs = React.useRef({})
+    const [inWishlist, setInWishlist] = useState(false)
 
     const isProductASet = product?.type.set
 
@@ -97,6 +99,24 @@ const ProductDetail = ({category, product, isLoading}) => {
                     </Button>
                 )
             })
+            setInWishlist(true)
+        } catch {
+            toast({
+                title: formatMessage(API_ERROR_MESSAGE),
+                status: 'error'
+            })
+        }
+    }
+
+    // TODO: DRY this handler when intl provider is available globally
+    const removeItemFromWishlist = async (product) => {
+        try {
+            await wishlist.removeListItemByProductId(product.id)
+            toast({
+                title: formatMessage(TOAST_MESSAGE_REMOVED_FROM_WISHLIST),
+                status: 'success'
+            })
+            setInWishlist(false)
         } catch {
             toast({
                 title: formatMessage(API_ERROR_MESSAGE),
@@ -268,18 +288,34 @@ const ProductDetail = ({category, product, isLoading}) => {
                     </Fragment>
                 ) : (
                     <Fragment>
-                        <ProductView
-                            product={product}
-                            category={primaryCategory?.parentCategoryTree || []}
-                            addToCart={(variant, quantity) =>
-                                handleAddToCart([{product, variant, quantity}])
-                            }
-                            addToWishlist={(product, variant, quantity) =>
-                                handleAddToWishlist(product, variant, quantity)
-                            }
-                            isProductLoading={isLoading}
-                            isCustomerProductListLoading={!wishlist.isInitialized}
-                        />
+                        {!inWishlist ? (
+                            <ProductView
+                                product={product}
+                                category={primaryCategory?.parentCategoryTree || []}
+                                addToCart={(variant, quantity) =>
+                                    handleAddToCart([{product, variant, quantity}])
+                                }
+                                addToWishlist={(product, variant, quantity) =>
+                                    handleAddToWishlist(product, variant, quantity)
+                                }
+                                isProductLoading={isLoading}
+                                isCustomerProductListLoading={!wishlist.isInitialized}
+                            />
+                        ) : (
+                            <ProductView
+                                product={product}
+                                category={primaryCategory?.parentCategoryTree || []}
+                                addToCart={(variant, quantity) =>
+                                    handleAddToCart([{product, variant, quantity}])
+                                }
+                                removeFromWishlist={(product, variant, quantity) =>
+                                    removeItemFromWishlist(product, variant, quantity)
+                                }
+                                isProductLoading={isLoading}
+                                isCustomerProductListLoading={!wishlist.isInitialized}
+                            />
+                        )}
+
                         <InformationAccordion product={product} />
                     </Fragment>
                 )}
@@ -347,7 +383,6 @@ ProductDetail.getProps = async ({res, params, location, api}) => {
     const {productId} = params
     let category, product
     const urlParams = new URLSearchParams(location.search)
-
     product = await api.shopperProducts.getProduct({
         parameters: {
             id: urlParams.get('pid') || productId,
